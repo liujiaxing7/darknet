@@ -1342,13 +1342,18 @@ extern "C" image image_data_augmentation(mat_cv* mat, int w, int h,
 
 //Set the ROI pixel value to zero
 extern "C" image maskRectROI(image img, box roi){
-    cv::Mat image = image_to_mat(img);
+    cv::Mat img_rect = image_to_mat(img);
 
     cv::Rect rect_mask(roi.x, roi.y, roi.w, roi.h);
-    cv::Mat subImage = image(rect_mask);
+    cv::Mat subImage = img_rect(rect_mask);
     subImage.setTo(0);
 
-    return mat_to_image(image);
+    image img_mask = mat_to_image(img_rect);
+    subImage.release();
+    img_rect.release();
+    free_image(img);
+
+    return img_mask;
 
 }
 

@@ -1255,6 +1255,61 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
             image ai = image_data_augmentation(src, w, h, pleft, ptop, swidth, sheight, flip, dhue, dsat, dexp,
                 gaussian_noise, gaussian_noise_boundary, blur, blur_boundary, boxes, truth_size, truth);
 
+            if(use_cutout && random_gen() % 2 == 0)
+            {
+                int cut_bx,cut_by,cut_bw,cut_bh;
+                while (use_cutout) {
+                    const float min = 0.05;  // 0.3*0.3 = 9%
+                    const float max = 0.15;  // 0.8*0.8 = 64%
+                    const int cut_w = rand_int(ai.w*min, ai.w*max);
+                    const int cut_h = rand_int(ai.h*min, ai.h*max);
+                    const int cut_x = rand_int(0, ai.w - cut_w - 1);
+                    const int cut_y = rand_int(0, ai.h - cut_h - 1);
+                    const int left = cut_x;
+                    const int right = cut_x + cut_w;
+                    const int top = cut_y;
+                    const int bot = cut_y + cut_h;
+
+                    assert(cut_x >= 0 && cut_x <= ai.w);
+                    assert(cut_y >= 0 && cut_y <= ai.h);
+                    assert(cut_w >= 0 && cut_w <= ai.w);
+                    assert(cut_h >= 0 && cut_h <= ai.h);
+
+                    assert(right >= 0 && right <= ai.w);
+                    assert(bot >= 0 && bot <= ai.h);
+
+                    assert(top <= bot);
+                    assert(left <= right);
+
+                    box black ={(right+cut_x)/2.0,(bot+cut_y)/2.0,cut_w,cut_h};
+
+                    int iou_out=0;
+                    int t;
+                    for (t = 0; t < boxes; ++t) {
+                        box b = float_to_box_stride(d.y.vals[i] + t*truth_size, 1);
+                        if (!b.x) break;
+                        box truth ={b.x *ai.w,b.y*ai.h,b.w *ai.w,b.h *ai.h};
+                        float iou=box_iou_cover(black,truth);
+                        if(iou>0.5) {
+                            iou_out=1;
+                            break;
+                        }
+                    }
+
+                    if (!iou_out) {
+                        cut_bx=cut_x;
+                        cut_by=cut_y;
+                        cut_bw=cut_w;
+                        cut_bh=cut_h;
+                        break;
+                    }
+                }
+
+                box roi={cut_bx,cut_by,cut_bw,cut_bh};
+                ai = maskRectROI(ai,roi);
+
+            }
+
             if (use_mixup == 0) {
                 d.X.vals[i] = ai.data;
                 memcpy(d.y.vals[i], truth, truth_size * boxes * sizeof(float));
@@ -1324,60 +1379,6 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
                 ai.data = d.X.vals[i];
             }
 
-            if(use_cutout && random_gen() % 2 == 0)
-            {
-                int cut_bx,cut_by,cut_bw,cut_bh;
-                while (use_cutout) {
-                    const float min = 0.05;  // 0.3*0.3 = 9%
-                    const float max = 0.15;  // 0.8*0.8 = 64%
-                    const int cut_w = rand_int(ai.w*min, ai.w*max);
-                    const int cut_h = rand_int(ai.h*min, ai.h*max);
-                    const int cut_x = rand_int(0, ai.w - cut_w - 1);
-                    const int cut_y = rand_int(0, ai.h - cut_h - 1);
-                    const int left = cut_x;
-                    const int right = cut_x + cut_w;
-                    const int top = cut_y;
-                    const int bot = cut_y + cut_h;
-
-                    assert(cut_x >= 0 && cut_x <= ai.w);
-                    assert(cut_y >= 0 && cut_y <= ai.h);
-                    assert(cut_w >= 0 && cut_w <= ai.w);
-                    assert(cut_h >= 0 && cut_h <= ai.h);
-
-                    assert(right >= 0 && right <= ai.w);
-                    assert(bot >= 0 && bot <= ai.h);
-
-                    assert(top <= bot);
-                    assert(left <= right);
-
-                    box black ={(right+cut_x)/2.0,(bot+cut_y)/2.0,cut_w,cut_h};
-
-                    int iou_out=0;
-                    int t;
-                    for (t = 0; t < boxes; ++t) {
-                        box b = float_to_box_stride(d.y.vals[i] + t*truth_size, 1);
-                        if (!b.x) break;
-                        box truth ={b.x *ai.w,b.y*ai.h,b.w *ai.w,b.h *ai.h};
-                        float iou=box_iou_cover(black,truth);
-                        if(iou>0.5) {
-                            iou_out=1;
-                            break;
-                        }
-                    }
-
-                    if (!iou_out) {
-                        cut_bx=cut_x;
-                        cut_by=cut_y;
-                        cut_bw=cut_w;
-                        cut_bh=cut_h;
-                        break;
-                    }
-                }
-
-                box roi={cut_bx,cut_by,cut_bw,cut_bh};
-                ai = maskRectROI(ai,roi);
-
-            }
 
             if (show_imgs && i_mixup == use_mixup)   // delete i_mixup
             {
